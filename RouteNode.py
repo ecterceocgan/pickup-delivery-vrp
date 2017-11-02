@@ -26,6 +26,7 @@ class RouteNode(NodeMixin):
 			self.num_in_car = 0
 	
 	def route_to_node(self, datetime_zero):
+		'''Traverse route backwards starting from node; for printing.'''
 		time_of_day = datetime_zero + datetime.timedelta(seconds=self.total_time*60)
 		if self.parent is not None:
 			return self.parent.route_to_node(datetime_zero) + time_of_day.strftime('%H:%M:%S') + ' > %s @ [%i, %i]\n' % (self.name, self.loc[0], self.loc[1])

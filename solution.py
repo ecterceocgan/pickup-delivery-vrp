@@ -25,24 +25,21 @@ data['Origin Loc.'] = list(np.array(zip(data['X1'], data['Y1'])))
 data['Dest. Loc.'] = list(np.array(zip(data['X2'], data['Y2'])))
 data.drop(['X1', 'Y1', 'X2', 'Y2'], inplace=True, axis=1)
 
-# Exploit information about there being only 5 customers and attempt to find "blocks" of rides that have to be completed before the next "block" starts
-blocks = [0] # array holding indices of block start/stops
-for i in xrange(len(data)-1):
-	if (data.iloc[i]['Arrive Before'] < data.iloc[i+1]['Depart After']):
-		blocks.append(i+1)
-blocks.append(len(data))
 
-
-# Recursively create tree of possible routes while ensuring vehicle isn't full
 def recursive_routes(node, trip_data, trip_id_time_index, time_matrix, leaves, connect_to=None):
-	for trip_id, pickup in node.route_options.iteritems():
-		requester = trip_data.loc[trip_data['Trip #']==trip_id, 'Requester'].item()
-		if (pickup is True) and (node.num_in_car < vehicle_capacity):
+	'''Recursively create tree of possible routes while ensuring vehicle isn't full.'''
+	for child_trip_id, child_pickup in node.route_options.iteritems():
+		# Get name of requester
+		requester = trip_data.loc[trip_data['Trip #']==child_trip_id, 'Requester'].item()
+		
+		# Create child route node based on whether they need to be picked up or dropped off
+		if (child_pickup is True) and (node.num_in_car < vehicle_capacity):
 			# Update future route options
-			updated_route_options = copy.deepcopy(node.route_options)
-			updated_route_options[trip_id] = False
-			# Calculate trip time
-			child_loc_id = trip_id_time_index[trip_id]
+			child_route_options = copy.deepcopy(node.route_options)
+			child_route_options[child_trip_id] = False
+			
+			# Calculate trip time (determine locations and look up in time_matrix)
+			child_loc_id = trip_id_time_index[child_trip_id]
 			if node.trip_id is not None:
 				if node.pickup is True:
 					parent_loc_id = trip_id_time_index[node.trip_id]
@@ -51,23 +48,28 @@ def recursive_routes(node, trip_data, trip_id_time_index, time_matrix, leaves, c
 			else:
 				parent_loc_id = child_loc_id
 			trip_time = time_matrix[parent_loc_id, child_loc_id]
+			
+			# Updating trip time by connecting to end of route in previous block (if applicable)
 			if connect_to is not None:
 				loc1 = data.loc[data['Trip #']==connect_to.trip_id, 'Dest. Loc.'].item()
-				loc2 = data.loc[data['Trip #']==trip_id, 'Origin Loc.'].item()
+				loc2 = data.loc[data['Trip #']==child_trip_id, 'Origin Loc.'].item()
 				trip_time = np.linalg.norm(loc1-loc2)/pixel_per_km/avg_speed_per_min
-			depart_after_time = trip_data.loc[trip_data['Trip #']==trip_id, 'Depart After'].item()
-			if (node.total_time + trip_time) < depart_after_time: # too early to be picked up, must wait
+			
+			# Checking if it's too early to be picked up; if so, must wait
+			depart_after_time = trip_data.loc[trip_data['Trip #']==child_trip_id, 'Depart After'].item()
+			if (node.total_time + trip_time) < depart_after_time:
 				trip_time = depart_after_time - node.total_time
 			
-			child_node_name = 'Pickup %i:%s' % (trip_id, requester)
-			child_loc = trip_data.loc[trip_data['Trip #']==trip_id, 'Origin Loc.'].item()
-			child_route_node = RouteNode(child_node_name, trip_id, pickup, child_loc, updated_route_options, trip_time, parent=node)
-		elif pickup is False:
+			child_node_name = 'Pickup %i:%s' % (child_trip_id, requester)
+			child_loc = trip_data.loc[trip_data['Trip #']==child_trip_id, 'Origin Loc.'].item()
+			child_route_node = RouteNode(child_node_name, child_trip_id, child_pickup, child_loc, child_route_options, trip_time, parent=node)
+		elif child_pickup is False:
 			# Update future route options
-			updated_route_options = copy.deepcopy(node.route_options)
-			updated_route_options[trip_id] = None
-			# Calculate trip time
-			child_loc_id = trip_id_time_index[trip_id]+len(trip_data)
+			child_route_options = copy.deepcopy(node.route_options)
+			child_route_options[child_trip_id] = None
+			
+			# Calculate trip time (determine locations and look up in time_matrix)
+			child_loc_id = trip_id_time_index[child_trip_id]+len(trip_data)
 			if node.trip_id is not None:
 				if node.pickup is True:
 					parent_loc_id = trip_id_time_index[node.trip_id]
@@ -77,25 +79,28 @@ def recursive_routes(node, trip_data, trip_id_time_index, time_matrix, leaves, c
 				parent_loc_id = child_loc_id
 			trip_time = time_matrix[parent_loc_id, child_loc_id]
 			
-			child_node_name = 'Dropoff %i:%s' % (trip_id, requester)
-			child_loc = trip_data.loc[trip_data['Trip #']==trip_id, 'Dest. Loc.'].item()
-			child_route_node = RouteNode(child_node_name, trip_id, pickup, child_loc, updated_route_options, trip_time, parent=node)
+			child_node_name = 'Dropoff %i:%s' % (child_trip_id, requester)
+			child_loc = trip_data.loc[trip_data['Trip #']==child_trip_id, 'Dest. Loc.'].item()
+			child_route_node = RouteNode(child_node_name, child_trip_id, child_pickup, child_loc, child_route_options, trip_time, parent=node)
 		else:
-			pass # pickup == None implies trip has been completed, nothing to add
+			pass # child_pickup == None implies trip has been completed, nothing to add
 	
+	# Recursively create routes
 	for child in node.children:
-		# if someone is late, prune branch (stop recursion)
+		# If someone is late, prune branch (stop recursion)
 		if not check_if_late(child, trip_data):
 			recursive_routes(child, trip_data, trip_id_time_index, time_matrix, leaves)
 		else:
 			child.parent = None # prune infeasible child route
+	
+	# Keep track of end nodes in feasible routes (everyone who has been picked up has been dropped off on time)
 	if len(node.children) == 0:
 		if (False not in node.route_options.values()):
-			leaves.append(node) # feasible routes (everyone who has been picked up has been dropped off on time)
+			leaves.append(node)
 
 
-# Given route_options state (i.e., who needs to be picked up/dropped off), check if anyone is late
 def check_if_late(node, trip_data):
+	'''Given route_options state (i.e., who needs to be picked up/dropped off), check if anyone is late.'''
 	for trip_id, pickup in node.route_options.iteritems():
 		if trip_id == node.trip_id: # check if self is late
 			arrive_before_time = trip_data.loc[trip_data['Trip #']==node.trip_id, 'Arrive Before'].item()
@@ -109,24 +114,26 @@ def check_if_late(node, trip_data):
 
 
 def assign_vehicles(route_leaves, vehicles, previous_vehicles):
+	'''Select best route in blocks, recursively find routes for trips left uncompleted and assign to new vehicle.'''
+	# Sort routes by length and time taken to complete
 	routes = pd.DataFrame(columns=['Last Node', 'Num. Stops', 'Total Time'])
 	for l in route_leaves:
 		routes = routes.append(pd.DataFrame([[l, len(l.ancestors), l.total_time]], columns=['Last Node', 'Num. Stops', 'Total Time']))
 	sorted_routes = routes.sort_values(['Num. Stops', 'Total Time'], ascending=[False, True]).reset_index(drop=True)
 	
+	# Select route with shortest time and most trips completed as 'best'
 	longest_route = sorted_routes.iloc[0]['Last Node']
 	vehicles.append(longest_route)
-	# Check for remaining rides, recurse and assign to new vehicle [start,start+1]
+	
+	# Check for remaining trips, recurse and assign to new vehicle
 	left_over = {}
 	for trip_id, pickup in longest_route.route_options.iteritems():
 		if pickup is True:
 			left_over[trip_id] = pickup
-	if len(left_over) != 0:
-		if len(previous_vehicles) > len(vehicles):
-			# continue with old vehicle
+	if len(left_over) != 0: # remaining trips exist
+		if len(previous_vehicles) > len(vehicles): # previous block has connecting vehicle to use
 			start = previous_vehicles[len(vehicles)]
-		else:
-			# brand new vehicle
+		else: # brand new vehicle
 			start = None
 		new_block_leaves = []
 		new_root_route = RouteNode(name='start', route_opt=left_over)
@@ -136,6 +143,7 @@ def assign_vehicles(route_leaves, vehicles, previous_vehicles):
 
 
 def itinerary(vehicles_full_trips):
+	'''Pretty print itinerary for each vehicle.'''
 	itinerary_str = ''
 	for v, routes in enumerate(vehicles_full_trips):
 		itinerary_str += '=========================================================\n'
@@ -143,10 +151,16 @@ def itinerary(vehicles_full_trips):
 		itinerary_str += '=========================================================\n'
 		for node in routes:
 			itinerary_str += node.route_to_node(time_zero)
-	print itinerary_str
+	return itinerary_str
 
 
 if __name__ == '__main__':
+	# Exploit information about there being only 5 customers and attempt to find "blocks" of rides that have to be completed before the next "block" starts
+	blocks = [0] # array holding indices of block start/stops
+	for i in xrange(len(data)-1):
+		if (data.iloc[i]['Arrive Before'] < data.iloc[i+1]['Depart After']):
+			blocks.append(i+1)
+	blocks.append(len(data))
 	
 	vehicles_routes = [[] for b in xrange(len(blocks)-1)]
 	
@@ -175,7 +189,7 @@ if __name__ == '__main__':
 			start = None
 			previous_vehicles = []
 		else:
-			start = vehicles_routes[b-1][0]
+			start = vehicles_routes[b-1][0] # connect to vehicle's end of route in previous block
 			previous_vehicles = vehicles_routes[b-1]
 		
 		recursive_routes(root_route, block_data, trip_id_time_index, time_matrix, block_leaves, start)
@@ -183,7 +197,7 @@ if __name__ == '__main__':
 		vehicles = []
 		vehicles_routes[b] = assign_vehicles(block_leaves, vehicles, previous_vehicles)
 	
-	# Given vehicle routes for each block of time, print itinerary
+	# Given vehicle routes for each block of time, create itinerary for vehicles
 	num_vehicles = 0
 	for block in vehicles_routes:
 		num_vehicles = max(len(block),num_vehicles)
@@ -194,8 +208,4 @@ if __name__ == '__main__':
 				vehicles_full_trips[v].append(block[v])
 	
 	# Pretty print itinerary
-	itinerary(vehicles_full_trips)
-	
-	#for block in vehicles_routes:
-	#	for veh_num, node in enumerate(block):
-	#		print 'Vehicle', veh_num, ':', node.route_to_node()
+	print itinerary(vehicles_full_trips)
