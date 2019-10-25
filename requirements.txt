@@ -2,3 +2,4 @@ anytree
 pandas
 numpy
 flake8
+pytest

@@ -1,8 +1,11 @@
 from __future__ import division
-import pandas as pd
-import numpy as np
-from RouteNode import RouteNode
+
 import copy
+
+import numpy as np
+import pandas as pd
+
+from RouteNode import RouteNode
 
 pixel_per_km = 5
 avg_speed_per_min = 1
@@ -165,60 +168,59 @@ def itinerary(vehicles_full_trips):
     return itinerary_str
 
 
-if __name__ == '__main__':
-    # Exploit information about there being only 5 customers and attempt to find
-    # "blocks" of rides that have to be completed before the next "block" starts
-    blocks = [0]  # array holding indices of block start/stops
-    for i in xrange(len(data)-1):
-        if (data.iloc[i]['Arrive Before'] < data.iloc[i+1]['Depart After']):
-            blocks.append(i+1)
-    blocks.append(len(data))
+# Exploit information about there being only 5 customers and attempt to find
+# "blocks" of rides that have to be completed before the next "block" starts
+blocks = [0]  # array holding indices of block start/stops
+for i in xrange(len(data)-1):
+    if (data.iloc[i]['Arrive Before'] < data.iloc[i+1]['Depart After']):
+        blocks.append(i+1)
+blocks.append(len(data))
 
-    vehicles_routes = [[] for b in xrange(len(blocks)-1)]
+vehicles_routes = [[] for b in xrange(len(blocks)-1)]
 
-    # Divide and conquer: for each block find optimal route(s)
-    for b in xrange(len(blocks)-1):
-        # Calculate distances between all origin/destination locations within a block
-        block_data = data.iloc[blocks[b]:blocks[b+1]]
-        origin_loc = list(block_data['Origin Loc.'])
-        dest_loc = list(block_data['Dest. Loc.'])
-        all_loc = origin_loc + dest_loc
-        dist_matrix = np.zeros((2 * len(block_data), 2 * len(block_data)))
-        for i, i_loc in enumerate(all_loc):
-            for j, j_loc in enumerate(all_loc):
-                dist_matrix[i, j] = np.linalg.norm(i_loc - j_loc) / pixel_per_km
-        time_matrix = dist_matrix/avg_speed_per_min
+# Divide and conquer: for each block find optimal route(s)
+for b in xrange(len(blocks)-1):
+    # Calculate distances between all origin/destination locations within a block
+    block_data = data.iloc[blocks[b]:blocks[b+1]]
+    origin_loc = list(block_data['Origin Loc.'])
+    dest_loc = list(block_data['Dest. Loc.'])
+    all_loc = origin_loc + dest_loc
+    dist_matrix = np.zeros((2 * len(block_data), 2 * len(block_data)))
+    for i, i_loc in enumerate(all_loc):
+        for j, j_loc in enumerate(all_loc):
+            dist_matrix[i, j] = np.linalg.norm(i_loc - j_loc) / pixel_per_km
+    time_matrix = dist_matrix/avg_speed_per_min
 
-        # Define possible route starts within a block
-        route_options = {block_data.iloc[i]['Trip #']: True for i in xrange(len(block_data))}
-        trip_id_time_index = {block_data.iloc[i]['Trip #']: i for i in xrange(len(block_data))}
-        root_route = RouteNode(name='start', route_opt=route_options)
+    # Define possible route starts within a block
+    route_options = {block_data.iloc[i]['Trip #']: True for i in xrange(len(block_data))}
+    trip_id_time_index = {block_data.iloc[i]['Trip #']: i for i in xrange(len(block_data))}
+    root_route = RouteNode(name='start', route_opt=route_options)
 
-        block_leaves = []
+    block_leaves = []
 
-        # Recursively build possible routes within a block
-        if b == 0:
-            start = None
-            previous_vehicles = []
-        else:
-            start = vehicles_routes[b-1][0]  # connect to vehicle's end of route in previous block
-            previous_vehicles = vehicles_routes[b-1]
+    # Recursively build possible routes within a block
+    if b == 0:
+        start = None
+        previous_vehicles = []
+    else:
+        start = vehicles_routes[b-1][0]  # connect to vehicle's end of route in previous block
+        previous_vehicles = vehicles_routes[b-1]
 
-        recursive_routes(root_route, block_data, trip_id_time_index, time_matrix,
-                         block_leaves, start)
+    recursive_routes(root_route, block_data, trip_id_time_index, time_matrix,
+                     block_leaves, start)
 
-        vehicles = []
-        vehicles_routes[b] = assign_vehicles(block_leaves, vehicles, previous_vehicles)
+    vehicles = []
+    vehicles_routes[b] = assign_vehicles(block_leaves, vehicles, previous_vehicles)
 
-    # Given vehicle routes for each block of time, create itinerary for vehicles
-    num_vehicles = 0
-    for block in vehicles_routes:
-        num_vehicles = max(len(block), num_vehicles)
-    vehicles_full_trips = [[] for n in xrange(num_vehicles)]
-    for block in vehicles_routes:
-        for v in xrange(num_vehicles):
-            if v < len(block):
-                vehicles_full_trips[v].append(block[v])
+# Given vehicle routes for each block of time, create itinerary for vehicles
+num_vehicles = 0
+for block in vehicles_routes:
+    num_vehicles = max(len(block), num_vehicles)
+vehicles_full_trips = [[] for n in xrange(num_vehicles)]
+for block in vehicles_routes:
+    for v in xrange(num_vehicles):
+        if v < len(block):
+            vehicles_full_trips[v].append(block[v])
 
-    # Pretty print itinerary
-    print itinerary(vehicles_full_trips)
+# Pretty print itinerary
+print itinerary(vehicles_full_trips)
