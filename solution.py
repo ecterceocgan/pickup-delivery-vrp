@@ -48,7 +48,7 @@ def recursive_routes(node, trip_data, trip_id_time_index, time_matrix, leaves, c
                 if node.pickup is True:
                     parent_loc_id = trip_id_time_index[node.trip_id]
                 elif node.pickup is False:
-                    parent_loc_id = trip_id_time_index[node.trip_id]+len(trip_data)
+                    parent_loc_id = trip_id_time_index[node.trip_id] + len(trip_data)
             else:
                 parent_loc_id = child_loc_id
             trip_time = time_matrix[parent_loc_id, child_loc_id]
@@ -57,7 +57,7 @@ def recursive_routes(node, trip_data, trip_id_time_index, time_matrix, leaves, c
             if connect_to is not None:
                 loc1 = data.loc[data['trip_id'] == connect_to.trip_id, 'destination_loc'].item()
                 loc2 = data.loc[data['trip_id'] == child_trip_id, 'origin_loc'].item()
-                trip_time = np.linalg.norm(loc1-loc2)/pixel_per_km/avg_speed_per_min
+                trip_time = np.linalg.norm(loc1 - loc2) / pixel_per_km / avg_speed_per_min
 
             # Checking if it's too early to be picked up; if so, must wait
             depart_after_time = (
@@ -75,12 +75,12 @@ def recursive_routes(node, trip_data, trip_id_time_index, time_matrix, leaves, c
             child_route_options[child_trip_id] = None
 
             # Calculate trip time (determine locations and look up in time_matrix)
-            child_loc_id = trip_id_time_index[child_trip_id]+len(trip_data)
+            child_loc_id = trip_id_time_index[child_trip_id] + len(trip_data)
             if node.trip_id is not None:
                 if node.pickup is True:
                     parent_loc_id = trip_id_time_index[node.trip_id]
                 elif node.pickup is False:
-                    parent_loc_id = trip_id_time_index[node.trip_id]+len(trip_data)
+                    parent_loc_id = trip_id_time_index[node.trip_id] + len(trip_data)
             else:
                 parent_loc_id = child_loc_id
             trip_time = time_matrix[parent_loc_id, child_loc_id]
@@ -163,7 +163,7 @@ def itinerary(vehicles_full_trips):
     itinerary_str = ''
     for v, routes in enumerate(vehicles_full_trips):
         itinerary_str += '=========================================================\n'
-        itinerary_str += 'VEHICLE %s\n' % str(v+1)
+        itinerary_str += 'VEHICLE %s\n' % str(v + 1)
         itinerary_str += '=========================================================\n'
         for node in routes:
             itinerary_str += node.route_to_node(time_zero)
@@ -174,17 +174,17 @@ data, time_zero = read_trip_data('Simpsons.txt')
 # Exploit information about there being only 5 customers and attempt to find
 # "blocks" of rides that have to be completed before the next "block" starts
 blocks = [0]  # array holding indices of block start/stops
-for i in xrange(len(data)-1):
-    if (data.iloc[i]['arrive_before'] < data.iloc[i+1]['depart_after']):
-        blocks.append(i+1)
+for i in xrange(len(data) - 1):
+    if (data.iloc[i]['arrive_before'] < data.iloc[i + 1]['depart_after']):
+        blocks.append(i + 1)
 blocks.append(len(data))
 
-vehicles_routes = [[] for b in xrange(len(blocks)-1)]
+vehicles_routes = [[] for b in xrange(len(blocks) - 1)]
 
 # Divide and conquer: for each block find optimal route(s)
-for b in xrange(len(blocks)-1):
+for b in xrange(len(blocks) - 1):
     # Calculate distances between all origin/destination locations within a block
-    block_data = data.iloc[blocks[b]:blocks[b+1]]
+    block_data = data.iloc[blocks[b]:blocks[b + 1]]
     origin_loc = list(block_data['origin_loc'])
     dest_loc = list(block_data['destination_loc'])
     all_loc = origin_loc + dest_loc
@@ -192,7 +192,7 @@ for b in xrange(len(blocks)-1):
     for i, i_loc in enumerate(all_loc):
         for j, j_loc in enumerate(all_loc):
             dist_matrix[i, j] = np.linalg.norm(i_loc - j_loc) / pixel_per_km
-    time_matrix = dist_matrix/avg_speed_per_min
+    time_matrix = dist_matrix / avg_speed_per_min
 
     # Define possible route starts within a block
     route_options = {block_data.iloc[i]['trip_id']: True for i in xrange(len(block_data))}
@@ -206,8 +206,8 @@ for b in xrange(len(blocks)-1):
         start = None
         previous_vehicles = []
     else:
-        start = vehicles_routes[b-1][0]  # connect to vehicle's end of route in previous block
-        previous_vehicles = vehicles_routes[b-1]
+        start = vehicles_routes[b - 1][0]  # connect to vehicle's end of route in previous block
+        previous_vehicles = vehicles_routes[b - 1]
 
     recursive_routes(root_route, block_data, trip_id_time_index, time_matrix,
                      block_leaves, start)

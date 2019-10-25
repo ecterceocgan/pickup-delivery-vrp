@@ -1,5 +1,6 @@
-from anytree import NodeMixin
 import datetime
+
+from anytree import NodeMixin
 
 
 class RouteNode(NodeMixin):
@@ -29,7 +30,7 @@ class RouteNode(NodeMixin):
 
     def route_to_node(self, datetime_zero):
         """Traverse route backwards starting from node; for printing."""
-        time_of_day = datetime_zero + datetime.timedelta(seconds=self.total_time*60)
+        time_of_day = datetime_zero + datetime.timedelta(seconds=self.total_time * 60)
         if self.parent is not None:
             return (self.parent.route_to_node(datetime_zero)
                     + time_of_day.strftime('%H:%M:%S')
