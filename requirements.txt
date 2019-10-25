@@ -1,3 +1,4 @@
 anytree
 pandas
 numpy
+flake8
